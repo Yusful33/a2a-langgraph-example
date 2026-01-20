@@ -1,0 +1,34 @@
+# Agent Frameworks
+google-adk[a2a]>=1.20.0
+langgraph>=0.2.0
+langchain-anthropic>=0.3.0
+langchain-core>=0.3.0
+
+# A2A Protocol
+a2a-sdk>=0.2.0
+
+# Anthropic
+anthropic>=0.40.0
+
+# LiteLLM (required for provider-style models)
+litellm>=1.75.5
+
+# Arize Tracing (includes OpenTelemetry)
+arize-otel>=0.11.0
+
+# HTTP client instrumentation for trace propagation
+opentelemetry-instrumentation-httpx>=0.45b0
+opentelemetry-instrumentation-aiohttp-client>=0.45b0
+
+# Optional: LangChain auto-instrumentation for tool call capture
+openinference-instrumentation-langchain>=0.1.0
+
+# CLI & Utils
+python-dotenv>=1.0.0
+httpx>=0.27.0
+uvicorn>=0.30.0
+starlette>=0.40.0
+
+# Jupyter (for running notebooks)
+jupyter>=1.0.0
+ipykernel>=6.0.0
