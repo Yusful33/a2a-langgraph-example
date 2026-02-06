@@ -16,7 +16,7 @@ from mcp.server import Server
 from mcp.server.sse import SseServerTransport
 from mcp.types import Tool, TextContent
 from starlette.applications import Starlette
-from starlette.routing import Route
+from starlette.routing import Route, Mount
 from starlette.responses import JSONResponse
 import uvicorn
 
@@ -155,6 +155,7 @@ def create_sse_app():
             await server.run(
                 streams[0], streams[1], server.create_initialization_options()
             )
+        return JSONResponse({"status": "disconnected"})
     
     async def handle_health(request):
         return JSONResponse({"status": "healthy", "server": "finance-mcp"})
@@ -174,6 +175,7 @@ def create_sse_app():
             Route("/health", handle_health),
             Route("/tools", handle_tools),
             Route("/sse", handle_sse),
+            Mount("/messages/", app=sse_transport.handle_post_message),
         ]
     )
 

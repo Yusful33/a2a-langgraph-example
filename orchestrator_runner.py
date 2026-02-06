@@ -309,7 +309,7 @@ class TradingOrchestratorExecutor(AgentExecutor):
             remote_bear = RemoteA2aAgent(
                 name="bear_risk_analyst",
                 description="Analyzes downside risks and warnings",
-                agent_card="http://localhost:8001/.well-known/agent-card.json",
+                agent_card="http://localhost:18001/.well-known/agent-card.json",
             )
 
             remote_bull = RemoteA2aAgent(
@@ -349,8 +349,8 @@ class TradingOrchestratorExecutor(AgentExecutor):
         
         self.bear_agent = await self.build_remote_agent(
             name="bear_risk_analyst",
-            card_url="http://localhost:8001/.well-known/agent-card.json",
-            url="http://localhost:8001"
+            card_url="http://localhost:18001/.well-known/agent-card.json",
+            url="http://localhost:18001"
         )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue):

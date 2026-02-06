@@ -188,9 +188,9 @@ from openinference.instrumentation import using_session
 # ============================================================================
 # MCP TOOL INTEGRATION
 # ============================================================================
-# MCP Server URL - change this to your MCP server address
-# Default matches the local finance MCP server (mcp_server/finance_server.py)
-MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://localhost:8080/sse")
+# MCP Server URL - must point to the SSE endpoint of the finance MCP server
+# Default matches finance MCP server on host port 10080 (override with MCP_SERVER_URL)
+MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://localhost:10080/sse")
 
 # Global MCP client (reused across requests)
 _mcp_client = None
@@ -224,11 +224,8 @@ async def load_mcp_tools():
             }
         )
         
-        # Start the client connection
-        await _mcp_client.__aenter__()
-        
         # Get tools from MCP server - these are LangChain-compatible
-        _mcp_tools = _mcp_client.get_tools()
+        _mcp_tools = await _mcp_client.get_tools()
         
         print(f"[MCP] Successfully loaded {len(_mcp_tools)} tools from MCP server:")
         for t in _mcp_tools:
@@ -255,8 +252,28 @@ def _wrap_tools_with_tracing(tools):
     for t in tools:
         name = getattr(t, "name", "tool")
         description = getattr(t, "description", "")
+        args_schema = getattr(t, "args_schema", None)
 
-        async def _acall(args, _tool=t, _name=name):
+        async def _acall(tool_input=None, _tool=t, _name=name, **kwargs):
+            # Normalize inputs: LangGraph may pass a string; MCP tools expect dict per args_schema.
+            args = {}
+            if kwargs:
+                args.update(kwargs)
+            if tool_input is not None:
+                if isinstance(tool_input, dict):
+                    args.update(tool_input)
+                elif isinstance(tool_input, str):
+                    try:
+                        decoded = json.loads(tool_input)
+                        if isinstance(decoded, dict):
+                            args.update(decoded)
+                        else:
+                            args.setdefault("ticker", str(decoded))
+                    except Exception:
+                        args.setdefault("ticker", tool_input)
+                else:
+                    args.setdefault("ticker", str(tool_input))
+
             with tracer.start_as_current_span(
                 f"tool:{_name}",
                 kind=trace_api.SpanKind.CLIENT,
@@ -276,9 +293,8 @@ def _wrap_tools_with_tracing(tools):
                     span.set_status(Status(StatusCode.ERROR, str(e)))
                     raise
 
-        # LangChain Tool wrapper preferring async; sync path delegates to async
-        def _call(args, _ac=_acall):
-            return asyncio.get_event_loop().run_until_complete(_ac(args))
+        def _call(tool_input=None, _ac=_acall, **kwargs):
+            return asyncio.get_event_loop().run_until_complete(_ac(tool_input=tool_input, **kwargs))
 
         wrapped.append(
             Tool.from_function(
@@ -286,33 +302,12 @@ def _wrap_tools_with_tracing(tools):
                 coroutine=_acall,
                 name=name,
                 description=description,
+                args_schema=args_schema,
+                infer_schema=False,
             )
         )
 
     return wrapped
-
-
-# --- Fallback: Local demo tools (used if MCP server unavailable) ---
-@tool
-def list_top_risks(ticker: str) -> str:
-    """Return a list of typical downside risks for a given stock ticker."""
-    ticker = ticker.upper()
-    return f"{ticker} risks (LOCAL): macro slowdown; margin compression; regulatory risk; execution risk."
-
-
-@tool
-def recent_volatility_snapshot(ticker: str) -> str:
-    """Provide a volatility/technical snapshot for the ticker."""
-    ticker = ticker.upper()
-    return f"{ticker} vol (LOCAL): 20d ~32%, 60d ~28%, beta ~1.3."
-
-
-@tool
-def sector_peers(ticker: str) -> str:
-    """Return peer tickers for relative comparison."""
-    ticker = ticker.upper()
-    peers = {"NVDA": "AMD, AVGO, ASML, INTC", "AAPL": "MSFT, GOOGL"}
-    return f"Peers for {ticker} (LOCAL): {peers.get(ticker, 'SPY, QQQ')}"
 
 
 class TraceContextMiddleware(BaseHTTPMiddleware):
@@ -416,17 +411,16 @@ class BearAgentExecutor(AgentExecutor):
                 api_key=os.environ.get("OPENAI_API_KEY"),
             )
 
-            # Try to load tools from MCP server first
             mcp_tools = await load_mcp_tools()
-            
-            if mcp_tools:
-                # Use MCP tools - automatically instrumented by LangChainInstrumentor
-                tools = _wrap_tools_with_tracing(mcp_tools)
-                print(f"[TRACE] Bear agent using {len(tools)} MCP tools")
-            else:
-                # Fall back to local demo tools
-                tools = [list_top_risks, recent_volatility_snapshot, sector_peers]
-                print(f"[TRACE] Bear agent using {len(tools)} local fallback tools")
+
+            if not mcp_tools:
+                raise RuntimeError(
+                    "MCP tools unavailable. Ensure finance MCP server is running "
+                    f"at {MCP_SERVER_URL} and langchain_mcp_adapters is installed."
+                )
+
+            tools = _wrap_tools_with_tracing(mcp_tools)
+            print(f"[TRACE] Bear agent using {len(tools)} MCP tools (MCP required)")
 
             agent = create_react_agent(
                 model=llm,
@@ -529,7 +523,7 @@ class BearAgentExecutor(AgentExecutor):
                     message=new_agent_text_message(f"Analysis failed: {str(e)}"),
                 )
 
-bear_agent_card.url = "http://localhost:8001"
+bear_agent_card.url = "http://localhost:18001"
 bear_agent_card.preferred_transport = TransportProtocol.jsonrpc
 
 
@@ -582,13 +576,13 @@ async def start_a2a_servers():
     # Bull Agent uses ADK, so it uses the standard ADK A2A pattern
     tasks = [
         asyncio.create_task(
-            run_bear_server(bear_agent_card, 8001)
+            run_bear_server(bear_agent_card, 18001)
         )
     ]
 
     # Give servers time to start
     await asyncio.sleep(2)
-    print("   ✓ Bear Agent A2A server: http://127.0.0.1:8001 (langgraph)")
+    print("   ✓ Bear Agent A2A server: http://127.0.0.1:18001 (langgraph)")
 
     # Keep servers running
     try:

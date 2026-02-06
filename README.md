@@ -22,7 +22,7 @@ Minimal repo for running:
 - Env vars for tracing/LLMs:
   - `OPENAI_API_KEY` (bear agent LLM)
   - `ARIZE_SPACE_ID`, `ARIZE_API_KEY`, `ARIZE_PROJECT_NAME` (optional tracing export; no defaults baked in)
-  - `MCP_SERVER_URL` (bear defaults to `http://localhost:8080/sse`; override to your host/port)
+  - `MCP_SERVER_URL` (bear defaults to `http://localhost:10080/sse`; override to your host/port)
   - Any Google/Vertex creds needed by your ADK flows if you add them
 
 ## Quick start (local)
@@ -35,7 +35,7 @@ pip install -r mcp_server/requirements.txt  # MCP server deps; add your own agen
 # start MCP (choose a free port, e.g., 10080)
 PORT=10080 ./run.sh -m uvicorn mcp_server.finance_server:create_sse_app --host 0.0.0.0 --port 10080
 
-# new shell: start bear (point to MCP URL)
+# new shell: start bear (point to MCP URL; required)
 MCP_SERVER_URL=http://localhost:10080/sse ./run.sh bear_agent_runner.py
 
 # new shell: start bull
